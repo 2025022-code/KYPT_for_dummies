@@ -239,9 +239,9 @@ function horizForces(aL, WL, aR, WR, d=null) {
 }
 
 // Paper Eq.(3): maximum Δa before tipping
-function deltaAmax(WR, b=null) {
-  b = b ?? sim.b;
-  return (2 + W0/WR) * b;
+function deltaAmax(WR, b=null, WL=null) {
+  b = b ?? sim.b;  WL = WL ?? sim.WL;
+  return (W0 + WL + WR) / WR * b;   // Eq.3 generalised: NL=0 when Δa = this
 }
 
 // ── Canvas coordinate transform ───────────────────────────────────────────────
@@ -451,14 +451,13 @@ function drawNF() {
     arr.forEach((y,i)=>i?ctx.lineTo(sx(aA[i]),sy(y)):ctx.moveTo(sx(aA[i]),sy(y)));
     ctx.stroke();
   }
-  const am=deltaAmax(Wo,sim.b);
-  if (am<=PLAT*1.5) {
-    ctx.strokeStyle='#e6394650'; ctx.lineWidth=1.5; ctx.setLineDash([4,3]);
-    for (const v of [am,-am]) {
-      if (v>aMin-0.01&&v<aMax+0.01){ctx.beginPath();ctx.moveTo(sx(v),pad.t);ctx.lineTo(sx(v),pad.t+iH);ctx.stroke();}
-    }
-    ctx.setLineDash([]);
+  const am=deltaAmax(Wo,sim.b,sim.WL);
+  // Tipping lines: aR = aL ± am  (NL=0 right, NR=0 left)
+  ctx.strokeStyle='#e6394650'; ctx.lineWidth=1.5; ctx.setLineDash([4,3]);
+  for (const v of [sim.aL+am, sim.aL-am]) {
+    if (v>aMin-0.01&&v<aMax+0.01){ctx.beginPath();ctx.moveTo(sx(v),pad.t);ctx.lineTo(sx(v),pad.t+iH);ctx.stroke();}
   }
+  ctx.setLineDash([]);
   const [NL0,NR0]=normalForces(sim.aR,Wo,sim.aL,sim.WL,sim.b);
   ctx.strokeStyle='#aaa'; ctx.lineWidth=1; ctx.setLineDash([4,3]);
   ctx.beginPath(); ctx.moveTo(sx(sim.aR),pad.t); ctx.lineTo(sx(sim.aR),pad.t+iH); ctx.stroke();
@@ -745,16 +744,16 @@ function drawAllFBDs() {
 
 // ── Stability indicator ───────────────────────────────────────────────────────
 function updateStability() {
-  const am=deltaAmax(sim.WR,sim.b);
-  const used=Math.max(Math.abs(sim.aR),Math.abs(sim.aL));
-  const pct=Math.min(100,used/am*100);
-  const fill=document.getElementById('stab-fill');
-  const txt=document.getElementById('stab-text');
+  const am  = deltaAmax(sim.WR, sim.b, sim.WL);   // actual NL=0 threshold
+  const used = Math.abs(sim.aR - sim.aL);           // Δa = aR − aL (Eq.3)
+  const pct  = Math.min(100, used / am * 100);
+  const fill = document.getElementById('stab-fill');
+  const txt  = document.getElementById('stab-text');
   fill.style.width=`${pct}%`;
   const color = pct<50?'#2a9d8f': pct<80?'#f4a261':'#e63946';
   fill.style.background=color;
   txt.style.color=color;
-  txt.textContent=`Δa_max=${(am*100).toFixed(1)}cm  현재 ${pct.toFixed(0)}% 사용`;
+  txt.textContent=`Δa=${(used*100).toFixed(1)}cm / Δa_max=${(am*100).toFixed(1)}cm  (${pct.toFixed(0)}%)`;
 }
 
 // ── Animation loop ────────────────────────────────────────────────────────────
