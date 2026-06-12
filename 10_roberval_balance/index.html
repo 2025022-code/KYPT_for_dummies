@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>로버발 저울 동역학 시뮬레이션</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  background: #f0f2f5;
+  color: #2b2d42;
+}
+header {
+  background: #2b2d42;
+  color: white;
+  padding: 12px 20px;
+}
+header h1 { font-size: 1.05rem; font-weight: 600; }
+header p  { font-size: 0.75rem; opacity: 0.65; margin-top: 2px; }
+
+#app {
+  max-width: 1160px;
+  margin: 0 auto;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+#main-panels {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  align-items: start;
+}
+
+.panel {
+  background: white;
+  border-radius: 10px;
+  padding: 12px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+}
+.panel h2 {
+  font-size: 0.78rem;
+  color: #888;
+  margin-bottom: 8px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}
+
+canvas { display: block; max-width: 100%; }
+
+#plots-panel { display: flex; flex-direction: column; gap: 12px; }
+
+#controls {
+  background: white;
+  border-radius: 10px;
+  padding: 14px 18px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+}
+#controls h2 { font-size: 0.82rem; color: #888; margin-bottom: 10px; font-weight: 500; }
+
+.slider-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 28px;
+}
+.sl-row { display: flex; flex-direction: column; gap: 3px; }
+.sl-header { display: flex; justify-content: space-between; }
+.sl-label { font-size: 0.8rem; color: #444; }
+.sl-val   { font-size: 0.8rem; color: #1e6091; font-weight: 700; }
+input[type=range] { width: 100%; accent-color: #4a90d9; cursor: pointer; height: 4px; }
+
+.info {
+  margin-top: 10px;
+  background: #f0f7ff;
+  border-left: 3px solid #4a90d9;
+  padding: 8px 12px;
+  border-radius: 0 6px 6px 0;
+  font-size: 0.79rem;
+  color: #555;
+  line-height: 1.55;
+}
+.badge {
+  display: inline-block;
+  background: #e2eeff;
+  color: #1e6091;
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  margin-left: 4px;
+}
+</style>
+</head>
+<body>
+<header>
+  <h1>🔬 로버발 저울 (Roberval Balance) — 동역학 시뮬레이션</h1>
+  <p>Park, Choi &amp; Kim (2019) The Physics Teacher Vol.57 &nbsp;|&nbsp; KYPT for Dummies &nbsp;|&nbsp; Problem 10</p>
+</header>
+
+<div id="app">
+  <div id="main-panels">
+
+    <div class="panel" id="balance-panel">
+      <h2>저울 다이어그램 (실시간) — 힘 벡터 표시</h2>
+      <canvas id="bc" width="500" height="480"></canvas>
+    </div>
+
+    <div id="plots-panel">
+      <div class="panel">
+        <h2>기울기각 θ(t) <span class="badge">동역학 ODE</span></h2>
+        <canvas id="tc" width="500" height="175"></canvas>
+      </div>
+      <div class="panel">
+        <h2>수직항력 N_L, N_R vs 물체 위치 a_R <span class="badge">Eq.1&amp;2</span></h2>
+        <canvas id="nc" width="500" height="175"></canvas>
+      </div>
+      <div class="panel">
+        <h2>내부 수평력 F₁, F₂ vs 물체 위치 a_R <span class="badge">Eq.4&amp;5</span></h2>
+        <canvas id="fc" width="500" height="175"></canvas>
+      </div>
+    </div>
+
+  </div>
+
+  <div id="controls">
+    <h2>파라미터 조절</h2>
+    <div class="slider-grid">
+      <div class="sl-row">
+        <div class="sl-header">
+          <span class="sl-label">W_L — 왼쪽 물체 질량</span>
+          <span class="sl-val" id="v-wl">100 g</span>
+        </div>
+        <input type="range" id="sl-wl" min="10" max="400" value="100" step="5">
+      </div>
+      <div class="sl-row">
+        <div class="sl-header">
+          <span class="sl-label">W_R — 오른쪽 물체 질량</span>
+          <span class="sl-val" id="v-wr">100 g</span>
+        </div>
+        <input type="range" id="sl-wr" min="10" max="400" value="100" step="5">
+      </div>
+      <div class="sl-row">
+        <div class="sl-header">
+          <span class="sl-label">a_R — 오른쪽 물체 위치</span>
+          <span class="sl-val" id="v-ar">0.0 cm</span>
+        </div>
+        <input type="range" id="sl-ar" min="-6" max="6" value="0" step="0.2">
+      </div>
+      <div class="sl-row">
+        <div class="sl-header">
+          <span class="sl-label">감쇠 계수 (Damping)</span>
+          <span class="sl-val" id="v-damp">50</span>
+        </div>
+        <input type="range" id="sl-damp" min="1" max="200" value="50" step="1">
+      </div>
+    </div>
+    <div class="info">
+      <strong>핵심 역설:</strong> a_R 슬라이더로 물체 위치를 바꿔도 W_L = W_R이면 <strong>θ는 변하지 않습니다</strong>.
+      하지만 <strong>N_L, N_R</strong>와 <strong>F₁, F₂</strong>는 변합니다.
+      이것이 로버발 저울이 "정적 수수께끼"인 이유입니다.
+      W_L ≠ W_R로 설정하면 감쇠진동을 관찰할 수 있습니다.
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Constants ────────────────────────────────────────────────────────────────
+const G      = 9.81;
+const LL     = 0.15;   // beam half-length
+const D      = 0.06;   // beam separation
+const B      = 0.10;   // half base-width
+const PLAT   = 0.065;  // platform half-width
+const M_BEAM = 0.40;
+const M_ARM  = 0.15;
+const M_POST = 0.20;
+const W0     = (M_BEAM + 2*M_ARM + M_POST) * G;
+const THETA_STOP = 38 * Math.PI / 180;
+
+// ── Physics ──────────────────────────────────────────────────────────────────
+function Ieff(WL, WR) {
+  return ((1/3)*M_BEAM + 2*M_ARM + (WL+WR)/G) * LL * LL;
+}
+
+function odeRHS(th, dth, WL, WR, c) {
+  let tau = LL * Math.cos(th) * (WR - WL) - c * dth;
+  if (th >  THETA_STOP) tau -= 600*(th - THETA_STOP);
+  if (th < -THETA_STOP) tau -= 600*(th + THETA_STOP);
+  return [dth, tau / Ieff(WL, WR)];
+}
+
+function rk4(th, dth, dt, WL, WR, c) {
+  const [k1v,k1a] = odeRHS(th,           dth,           WL, WR, c);
+  const [k2v,k2a] = odeRHS(th+k1v*dt/2,  dth+k1a*dt/2,  WL, WR, c);
+  const [k3v,k3a] = odeRHS(th+k2v*dt/2,  dth+k2a*dt/2,  WL, WR, c);
+  const [k4v,k4a] = odeRHS(th+k3v*dt,    dth+k3a*dt,    WL, WR, c);
+  return [
+    th  + (k1v+2*k2v+2*k3v+k4v)*dt/6,
+    dth + (k1a+2*k2a+2*k3a+k4a)*dt/6
+  ];
+}
+
+function normalForces(aR, W, aL=0) {
+  const s = W0 + 2*W;
+  const d = ((aR - aL) / B) * W;
+  return [(s-d)/G*1000, (s+d)/G*1000];   // gf
+}
+
+function horizForces(aR, W, aL=0) {
+  return [aL*W/D, aR*W/D];   // N
+}
+
+function deltaAmax(W) {
+  return (2 + W0/W) * B;
+}
+
+// ── Simulation state ─────────────────────────────────────────────────────────
+const sim = {
+  theta: 0.03, dtheta: 0.0, t: 0,
+  WL: G, WR: G, aR: 0.0, aL: 0.0, c: 0.05,
+  tHist: [], thHist: [], maxHist: 500,
+};
+
+// ── Canvas coordinate transform ───────────────────────────────────────────────
+function makeT(canvas, x0=-0.33, x1=0.33, y0=-0.30, y1=0.28) {
+  const W = canvas.width, H = canvas.height;
+  return {
+    px: x => (x-x0)/(x1-x0)*W,
+    py: y => (y1-y)/(y1-y0)*H,
+    pdx: d => d/(x1-x0)*W,
+    pdy: d => d/(y1-y0)*H,
+    W, H
+  };
+}
+
+// ── Arrow helper ─────────────────────────────────────────────────────────────
+function drawArrow(ctx, x1,y1,x2,y2, color, lw=2) {
+  const dx=x2-x1, dy=y2-y1, len=Math.hypot(dx,dy);
+  if (len < 3) return;
+  const ang = Math.atan2(dy,dx), hl = Math.max(8, lw*4);
+  ctx.beginPath(); ctx.strokeStyle=color; ctx.lineWidth=lw;
+  ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+  ctx.beginPath(); ctx.fillStyle=color;
+  ctx.moveTo(x2,y2);
+  ctx.lineTo(x2-hl*Math.cos(ang-0.38), y2-hl*Math.sin(ang-0.38));
+  ctx.lineTo(x2-hl*Math.cos(ang+0.38), y2-hl*Math.sin(ang+0.38));
+  ctx.closePath(); ctx.fill();
+}
+
+// ── Draw balance ──────────────────────────────────────────────────────────────
+function drawBalance() {
+  const canvas = document.getElementById('bc');
+  const ctx = canvas.getContext('2d');
+  const T = makeT(canvas);
+  const {px,py,pdx,pdy,W,H} = T;
+
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle='#f5f5f5'; ctx.fillRect(0,0,W,H);
+
+  const th=sim.theta, ct=Math.cos(th), st=Math.sin(th);
+  const kp = {
+    pu:[0, D/2],  pl:[0,-D/2],
+    ru:[ LL*ct,  D/2-LL*st], rl:[ LL*ct, -D/2-LL*st],
+    lu:[-LL*ct,  D/2+LL*st], ll:[-LL*ct, -D/2+LL*st],
+  };
+  const p = name => [px(kp[name][0]), py(kp[name][1])];
+
+  function seg(a,b,color,lw) {
+    ctx.beginPath(); ctx.strokeStyle=color; ctx.lineWidth=lw; ctx.lineCap='round';
+    ctx.moveTo(px(a[0]),py(a[1])); ctx.lineTo(px(b[0]),py(b[1])); ctx.stroke();
+  }
+
+  // Beams
+  seg(kp.lu, kp.ru, '#2b2d42', pdx(0.013));
+  seg(kp.ll, kp.rl, '#2b2d42', pdx(0.013));
+  // Post
+  ctx.beginPath(); ctx.strokeStyle='#2b2d42'; ctx.lineWidth=pdx(0.022); ctx.lineCap='round';
+  ctx.moveTo(px(0),py(kp.pl[1]-0.01)); ctx.lineTo(px(0),py(kp.pu[1]+0.01)); ctx.stroke();
+  // Arms
+  for (const [top,bot] of [[kp.ru,kp.rl],[kp.lu,kp.ll]]) {
+    seg(top, bot, '#1e6091', pdx(0.011));
+    seg(bot, [bot[0],bot[1]-0.022], '#1e6091', pdx(0.011));
+  }
+  // Platforms
+  for (const con of [kp.ru, kp.lu]) {
+    seg([con[0]-PLAT,con[1]], [con[0]+PLAT,con[1]], '#1e6091', pdx(0.018));
+  }
+  // Axles
+  for (const pt of Object.values(kp)) {
+    ctx.beginPath(); ctx.arc(px(pt[0]),py(pt[1]), pdx(0.009),0,2*Math.PI);
+    ctx.fillStyle='#888'; ctx.fill();
+    ctx.strokeStyle='#2b2d42'; ctx.lineWidth=1; ctx.stroke();
+  }
+
+  // Objects
+  for (const [ax,ay,ao,W_obj,col] of [
+    [kp.ru[0],kp.ru[1],sim.aR,sim.WR,'#e63946'],
+    [kp.lu[0],kp.lu[1],sim.aL,sim.WL,'#457b9d'],
+  ]) {
+    const s=0.015+0.007*(W_obj/G), xc=ax+ao;
+    ctx.beginPath(); ctx.fillStyle=col; ctx.globalAlpha=0.92;
+    ctx.rect(px(xc-s), py(ay+2*s), pdx(2*s), pdy(2*s));
+    ctx.fill(); ctx.globalAlpha=1;
+    ctx.fillStyle=col; ctx.font=`bold ${Math.round(pdx(0.033))}px sans-serif`;
+    ctx.textAlign='center';
+    ctx.fillText(`${(W_obj/G*1000).toFixed(0)} g`, px(xc), py(ay+2*s+0.02));
+  }
+
+  // Ground
+  const gy=-0.232;
+  ctx.beginPath(); ctx.strokeStyle='#ccc'; ctx.lineWidth=1.5;
+  ctx.setLineDash([6,4]); ctx.moveTo(0,py(gy)); ctx.lineTo(W,py(gy)); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Normal forces
+  const [NL,NR] = normalForces(sim.aR, sim.WR, sim.aL);
+  const refGf   = (W0+2*sim.WR)/G*1000/2;
+  const scN     = 0.09/refGf;
+  for (const [x,N,lbl] of [[-B,NL,`N_L: ${NL.toFixed(0)} gf`],[B,NR,`N_R: ${NR.toFixed(0)} gf`]]) {
+    const h=N*scN;
+    drawArrow(ctx, px(x),py(gy), px(x),py(gy+h), '#2a9d8f', 2.5);
+    ctx.fillStyle='#2a9d8f'; ctx.font=`${Math.round(pdx(0.028))}px sans-serif`;
+    ctx.textAlign='center';
+    ctx.fillText(lbl, px(x), py(gy+h+0.03));
+  }
+
+  // Horizontal forces
+  const [F1,F2] = horizForces(sim.aR, sim.WR, sim.aL);
+  const Fmx = Math.max(Math.abs(F1),Math.abs(F2),0.05);
+  const scF = 0.055/Fmx;
+  const midR=[kp.ru[0],(kp.ru[1]+kp.rl[1])/2];
+  const midL=[kp.lu[0],(kp.lu[1]+kp.ll[1])/2];
+  if (Math.abs(F2)>0.05) {
+    drawArrow(ctx, px(midR[0]),py(midR[1]), px(midR[0]-F2*scF),py(midR[1]), '#f4a261', 2);
+    ctx.fillStyle='#f4a261'; ctx.textAlign='right';
+    ctx.font=`${Math.round(pdx(0.025))}px sans-serif`;
+    ctx.fillText(`F₂=${F2.toFixed(2)}N`, px(midR[0]-F2*scF-0.008), py(midR[1])-4);
+  }
+  if (Math.abs(F1)>0.05) {
+    drawArrow(ctx, px(midL[0]),py(midL[1]), px(midL[0]+F1*scF),py(midL[1]), '#f4a261', 2);
+    ctx.fillStyle='#f4a261'; ctx.textAlign='left';
+    ctx.font=`${Math.round(pdx(0.025))}px sans-serif`;
+    ctx.fillText(`F₁=${F1.toFixed(2)}N`, px(midL[0]+F1*scF+0.008), py(midL[1])-4);
+  }
+
+  // Angle badge
+  const badge=`θ = ${(th*180/Math.PI).toFixed(1)}°`;
+  ctx.font=`bold ${Math.round(pdx(0.038))}px sans-serif`;
+  ctx.textAlign='right';
+  const bw=ctx.measureText(badge).width+16;
+  ctx.fillStyle='rgba(255,255,255,0.9)';
+  ctx.fillRect(W-bw-6, 8, bw, 28);
+  ctx.fillStyle='#2b2d42';
+  ctx.fillText(badge, W-10, 28);
+}
+
+// ── Draw θ(t) ─────────────────────────────────────────────────────────────────
+function drawTheta() {
+  const canvas=document.getElementById('tc');
+  const ctx=canvas.getContext('2d');
+  const W=canvas.width, H=canvas.height;
+  const pad={l:44,r:12,t:14,b:32};
+  const iW=W-pad.l-pad.r, iH=H-pad.t-pad.b;
+
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle='white'; ctx.fillRect(0,0,W,H);
+
+  const ta=sim.tHist, ha=sim.thHist.map(v=>v*180/Math.PI);
+  if (ta.length<2) return;
+
+  const tMin=ta[0], tMax=ta[ta.length-1];
+  const yAbs=Math.max(Math.abs(Math.max(...ha)),Math.abs(Math.min(...ha)),3);
+  const yMin=-yAbs, yMax=yAbs;
+
+  const sx=x=>pad.l+(x-tMin)/(tMax-tMin||1)*iW;
+  const sy=y=>pad.t+(yMax-y)/(yMax-yMin)*iH;
+
+  // Grid
+  ctx.strokeStyle='#f0f0f0'; ctx.lineWidth=1;
+  const ys=yAbs<10?2:5;
+  for (let y=Math.ceil(yMin/ys)*ys; y<=yMax; y+=ys) {
+    ctx.beginPath(); ctx.moveTo(pad.l,sy(y)); ctx.lineTo(pad.l+iW,sy(y)); ctx.stroke();
+  }
+  // Zero
+  ctx.strokeStyle='#ccc'; ctx.lineWidth=1.2; ctx.setLineDash([4,3]);
+  ctx.beginPath(); ctx.moveTo(pad.l,sy(0)); ctx.lineTo(pad.l+iW,sy(0)); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Curve
+  ctx.beginPath(); ctx.strokeStyle='#2b2d42'; ctx.lineWidth=2;
+  ha.forEach((y,i)=> i?ctx.lineTo(sx(ta[i]),sy(y)):ctx.moveTo(sx(ta[i]),sy(y)));
+  ctx.stroke();
+
+  // Current dot
+  const last=ha[ha.length-1];
+  ctx.beginPath(); ctx.arc(sx(ta[ta.length-1]),sy(last),4,0,2*Math.PI);
+  ctx.fillStyle='#e63946'; ctx.fill();
+
+  // Labels
+  ctx.fillStyle='#888'; ctx.font='10px sans-serif';
+  ctx.textAlign='center'; ctx.fillText('시간 (s)', pad.l+iW/2, H-4);
+  ctx.save(); ctx.translate(11,pad.t+iH/2); ctx.rotate(-Math.PI/2);
+  ctx.fillText('θ (°)',0,0); ctx.restore();
+  ctx.textAlign='right';
+  for (let y=Math.ceil(yMin/ys)*ys; y<=yMax; y+=ys)
+    ctx.fillText(y.toFixed(0), pad.l-4, sy(y)+4);
+  ctx.textAlign='center';
+  for (let i=0;i<=4;i++) {
+    const t=tMin+(tMax-tMin)*i/4;
+    ctx.fillText(t.toFixed(1), sx(t), H-pad.b+13);
+  }
+}
+
+// ── Draw N_L/N_R ──────────────────────────────────────────────────────────────
+function drawNF() {
+  const canvas=document.getElementById('nc');
+  const ctx=canvas.getContext('2d');
+  const W=canvas.width, H=canvas.height;
+  const pad={l:52,r:12,t:14,b:32};
+  const iW=W-pad.l-pad.r, iH=H-pad.t-pad.b;
+
+  ctx.clearRect(0,0,W,H); ctx.fillStyle='white'; ctx.fillRect(0,0,W,H);
+
+  const Wo=sim.WR, N=250;
+  const aMin=-PLAT, aMax=PLAT;
+  const aA=Array.from({length:N},(_,i)=>aMin+(aMax-aMin)*i/(N-1));
+  const NLa=aA.map(a=>normalForces(a,Wo)[0]);
+  const NRa=aA.map(a=>normalForces(a,Wo)[1]);
+  const yMin=Math.min(...NLa)*0.92, yMax=Math.max(...NRa)*1.06;
+
+  const sx=x=>pad.l+(x-aMin)/(aMax-aMin)*iW;
+  const sy=y=>pad.t+(yMax-y)/(yMax-yMin)*iH;
+
+  const ys=Math.pow(10,Math.floor(Math.log10((yMax-yMin)/4)));
+  ctx.strokeStyle='#f0f0f0'; ctx.lineWidth=1;
+  for (let y=Math.ceil(yMin/ys)*ys; y<=yMax; y+=ys) {
+    ctx.beginPath(); ctx.moveTo(pad.l,sy(y)); ctx.lineTo(pad.l+iW,sy(y)); ctx.stroke();
+  }
+
+  for (const [arr,col] of [[NLa,'#457b9d'],[NRa,'#e63946']]) {
+    ctx.beginPath(); ctx.strokeStyle=col; ctx.lineWidth=2;
+    arr.forEach((y,i)=> i?ctx.lineTo(sx(aA[i]),sy(y)):ctx.moveTo(sx(aA[i]),sy(y)));
+    ctx.stroke();
+  }
+
+  // Δa_max
+  const am=deltaAmax(Wo);
+  if (am<=PLAT*1.5) {
+    ctx.strokeStyle='#e6394680'; ctx.lineWidth=1.2; ctx.setLineDash([4,3]);
+    for (const v of [am,-am]) {
+      if (v>aMin&&v<aMax) {
+        ctx.beginPath(); ctx.moveTo(sx(v),pad.t); ctx.lineTo(sx(v),pad.t+iH); ctx.stroke();
+      }
+    }
+    ctx.setLineDash([]);
+  }
+
+  // Current marker
+  const [NL0,NR0]=normalForces(sim.aR,Wo);
+  ctx.strokeStyle='#aaa'; ctx.lineWidth=1; ctx.setLineDash([4,3]);
+  ctx.beginPath(); ctx.moveTo(sx(sim.aR),pad.t); ctx.lineTo(sx(sim.aR),pad.t+iH); ctx.stroke();
+  ctx.setLineDash([]);
+  for (const [N,col] of [[NL0,'#457b9d'],[NR0,'#e63946']]) {
+    ctx.beginPath(); ctx.arc(sx(sim.aR),sy(N),5,0,2*Math.PI); ctx.fillStyle=col; ctx.fill();
+  }
+
+  // Legend
+  ctx.font='11px sans-serif'; ctx.textAlign='left';
+  ctx.fillStyle='#457b9d'; ctx.fillText('N_L',pad.l+6,pad.t+14);
+  ctx.fillStyle='#e63946'; ctx.fillText('N_R',pad.l+6,pad.t+27);
+
+  // Axes
+  ctx.fillStyle='#888'; ctx.font='10px sans-serif';
+  ctx.textAlign='center'; ctx.fillText('a_R (cm)', pad.l+iW/2, H-4);
+  ctx.save(); ctx.translate(11,pad.t+iH/2); ctx.rotate(-Math.PI/2);
+  ctx.fillText('수직항력 (gf)',0,0); ctx.restore();
+  ctx.textAlign='right';
+  for (let y=Math.ceil(yMin/ys)*ys; y<=yMax; y+=ys)
+    ctx.fillText(y.toFixed(0), pad.l-4, sy(y)+4);
+  ctx.textAlign='center';
+  for (let i=0;i<=4;i++) {
+    const a=(aMin+(aMax-aMin)*i/4)*100;
+    ctx.fillText(a.toFixed(1), sx(a/100), H-pad.b+13);
+  }
+}
+
+// ── Draw F1/F2 ────────────────────────────────────────────────────────────────
+function drawHF() {
+  const canvas=document.getElementById('fc');
+  const ctx=canvas.getContext('2d');
+  const W=canvas.width, H=canvas.height;
+  const pad={l:52,r:12,t:14,b:32};
+  const iW=W-pad.l-pad.r, iH=H-pad.t-pad.b;
+
+  ctx.clearRect(0,0,W,H); ctx.fillStyle='white'; ctx.fillRect(0,0,W,H);
+
+  const Wo=sim.WR, N=250;
+  const aMin=-PLAT, aMax=PLAT;
+  const aA=Array.from({length:N},(_,i)=>aMin+(aMax-aMin)*i/(N-1));
+  const F1a=aA.map(a=>horizForces(a,Wo)[0]);
+  const F2a=aA.map(a=>horizForces(a,Wo)[1]);
+  const all=[...F1a,...F2a];
+  const yMin=Math.min(...all)-0.05, yMax=Math.max(...all)+0.05;
+
+  const sx=x=>pad.l+(x-aMin)/(aMax-aMin)*iW;
+  const sy=y=>pad.t+(yMax-y)/(yMax-yMin)*iH;
+
+  // Grid
+  ctx.strokeStyle='#f0f0f0'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(pad.l,sy(0)); ctx.lineTo(pad.l+iW,sy(0)); ctx.stroke();
+  for (const v of [-2,-1,1,2]) {
+    if (v>=yMin&&v<=yMax) {
+      ctx.beginPath(); ctx.moveTo(pad.l,sy(v)); ctx.lineTo(pad.l+iW,sy(v)); ctx.stroke();
+    }
+  }
+
+  for (const [arr,col] of [[F1a,'#457b9d'],[F2a,'#e63946']]) {
+    ctx.beginPath(); ctx.strokeStyle=col; ctx.lineWidth=2;
+    arr.forEach((y,i)=> i?ctx.lineTo(sx(aA[i]),sy(y)):ctx.moveTo(sx(aA[i]),sy(y)));
+    ctx.stroke();
+  }
+
+  // Current marker
+  const [F10,F20]=horizForces(sim.aR,Wo);
+  ctx.strokeStyle='#aaa'; ctx.lineWidth=1; ctx.setLineDash([4,3]);
+  ctx.beginPath(); ctx.moveTo(sx(sim.aR),pad.t); ctx.lineTo(sx(sim.aR),pad.t+iH); ctx.stroke();
+  ctx.setLineDash([]);
+  for (const [F,col] of [[F10,'#457b9d'],[F20,'#e63946']]) {
+    ctx.beginPath(); ctx.arc(sx(sim.aR),sy(F),5,0,2*Math.PI); ctx.fillStyle=col; ctx.fill();
+  }
+
+  // Legend
+  ctx.font='11px sans-serif'; ctx.textAlign='left';
+  ctx.fillStyle='#457b9d'; ctx.fillText('F₁ (왼팔)',pad.l+6,pad.t+14);
+  ctx.fillStyle='#e63946'; ctx.fillText('F₂ (오른팔)',pad.l+6,pad.t+27);
+
+  // Axes
+  ctx.fillStyle='#888'; ctx.font='10px sans-serif';
+  ctx.textAlign='center'; ctx.fillText('a_R (cm)', pad.l+iW/2, H-4);
+  ctx.save(); ctx.translate(11,pad.t+iH/2); ctx.rotate(-Math.PI/2);
+  ctx.fillText('수평력 (N)',0,0); ctx.restore();
+  ctx.textAlign='right';
+  for (const v of [-2,-1,0,1,2]) {
+    if (v>=yMin&&v<=yMax) ctx.fillText(v.toFixed(1), pad.l-4, sy(v)+4);
+  }
+  ctx.textAlign='center';
+  for (let i=0;i<=4;i++) {
+    const a=(aMin+(aMax-aMin)*i/4)*100;
+    ctx.fillText(a.toFixed(1), sx(a/100), H-pad.b+13);
+  }
+}
+
+// ── Animation loop ────────────────────────────────────────────────────────────
+const DT = 1/60;
+let lastTS = null, acc = 0;
+
+function loop(ts) {
+  if (lastTS !== null) {
+    const elapsed = Math.min((ts - lastTS)/1000, 0.05);
+    acc += elapsed;
+    while (acc >= DT) {
+      const [nt,nd] = rk4(sim.theta, sim.dtheta, DT, sim.WL, sim.WR, sim.c);
+      sim.theta=nt; sim.dtheta=nd; sim.t+=DT;
+      sim.tHist.push(sim.t); sim.thHist.push(sim.theta);
+      if (sim.tHist.length > sim.maxHist) { sim.tHist.shift(); sim.thHist.shift(); }
+      acc -= DT;
+    }
+  }
+  lastTS = ts;
+  drawBalance();
+  drawTheta();
+  requestAnimationFrame(loop);
+}
+
+// ── Sliders ───────────────────────────────────────────────────────────────────
+function resetDyn() {
+  sim.theta=0.03; sim.dtheta=0; sim.t=0;
+  sim.tHist=[]; sim.thHist=[];
+}
+
+document.getElementById('sl-wl').addEventListener('input', e => {
+  const v=parseFloat(e.target.value);
+  document.getElementById('v-wl').textContent=`${v} g`;
+  sim.WL=v/1000*G; resetDyn(); drawNF(); drawHF();
+});
+document.getElementById('sl-wr').addEventListener('input', e => {
+  const v=parseFloat(e.target.value);
+  document.getElementById('v-wr').textContent=`${v} g`;
+  sim.WR=v/1000*G; resetDyn(); drawNF(); drawHF();
+});
+document.getElementById('sl-ar').addEventListener('input', e => {
+  const v=parseFloat(e.target.value);
+  document.getElementById('v-ar').textContent=`${v.toFixed(1)} cm`;
+  sim.aR=v/100;
+  drawNF(); drawHF();
+});
+document.getElementById('sl-damp').addEventListener('input', e => {
+  const v=parseFloat(e.target.value);
+  document.getElementById('v-damp').textContent=`${v}`;
+  sim.c=v/1000;
+});
+
+// ── Start ─────────────────────────────────────────────────────────────────────
+drawNF();
+drawHF();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

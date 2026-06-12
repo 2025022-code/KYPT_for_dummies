@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KYPT for Dummies</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f0f2f5; color: #2b2d42; }
+header { background: #2b2d42; color: white; padding: 20px 28px; }
+header h1 { font-size: 1.4rem; font-weight: 700; }
+header p  { font-size: 0.82rem; opacity: 0.6; margin-top: 4px; }
+main { max-width: 800px; margin: 32px auto; padding: 0 20px; display: flex; flex-direction: column; gap: 16px; }
+h2 { font-size: 1rem; color: #888; margin-bottom: 12px; font-weight: 500; }
+a.card {
+  display: flex; align-items: center; gap: 16px;
+  background: white; border-radius: 12px; padding: 18px 22px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+  text-decoration: none; color: inherit;
+  transition: box-shadow 0.15s, transform 0.15s;
+}
+a.card:hover { box-shadow: 0 4px 18px rgba(0,0,0,0.13); transform: translateY(-2px); }
+.num { font-size: 1.5rem; font-weight: 800; color: #4a90d9; min-width: 36px; }
+.info h3 { font-size: 0.95rem; font-weight: 600; margin-bottom: 2px; }
+.info p  { font-size: 0.78rem; color: #888; }
+.badge { margin-left: auto; background: #e2eeff; color: #1e6091; border-radius: 6px; padding: 4px 10px; font-size: 0.72rem; font-weight: 700; white-space: nowrap; }
+</style>
+</head>
+<body>
+<header>
+  <h1>KYPT for Dummies</h1>
+  <p>Korean Young Physicists' Tournament — 문제별 시뮬레이션 & 분석</p>
+</header>
+<main>
+  <h2>시뮬레이션 목록</h2>
+  <a class="card" href="10_roberval_balance/index.html">
+    <span class="num">10</span>
+    <div class="info">
+      <h3>로버발 저울 (Roberval Balance)</h3>
+      <p>동역학 ODE 시뮬레이션 — θ(t), 수직항력 N_L/N_R, 내부 수평력 F₁/F₂</p>
+    </div>
+    <span class="badge">시뮬레이션 열기 →</span>
+  </a>
+</main>
+</body>
+</html>
