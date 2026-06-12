@@ -292,6 +292,25 @@ function drawBalance() {
     ctx.moveTo(px(a[0]),py(a[1])); ctx.lineTo(px(b[0]),py(b[1])); ctx.stroke();
   }
 
+  // Ground (drawn before tipping transform — stays fixed)
+  const gy=-0.22;
+  ctx.beginPath(); ctx.strokeStyle='#ccc'; ctx.lineWidth=1.5;
+  ctx.setLineDash([6,4]); ctx.moveTo(0,py(gy)); ctx.lineTo(W,py(gy)); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.strokeStyle='#bbb'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.setLineDash([3,3]);
+  ctx.moveTo(px(-sim.b),py(gy)+8); ctx.lineTo(px(-sim.b),py(gy)+20); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(px(sim.b),py(gy)+8); ctx.lineTo(px(sim.b),py(gy)+20); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Apply tipping rotation around base contact point
+  if (tip.active) {
+    ctx.save();
+    ctx.translate(px(tip.pivotX), py(gy));
+    ctx.rotate(tip.phi * tip.dir);
+    ctx.translate(-px(tip.pivotX), -py(gy));
+  }
+
   // Beams
   seg(kp.lu,kp.ru,'#2b2d42',pdx(0.013));
   seg(kp.ll,kp.rl,'#2b2d42',pdx(0.013));
@@ -311,7 +330,6 @@ function drawBalance() {
     ctx.beginPath(); ctx.arc(px(pt[0]),py(pt[1]),pdx(0.009),0,2*Math.PI);
     ctx.fillStyle='#888'; ctx.fill(); ctx.strokeStyle='#2b2d42'; ctx.lineWidth=1; ctx.stroke();
   }
-
   // Objects
   for (const [ax,ay,ao,Wobj,col] of [
     [kp.ru[0],kp.ru[1],sim.aR,sim.WR,'#e63946'],
@@ -325,37 +343,11 @@ function drawBalance() {
     ctx.textAlign='center';
     ctx.fillText(`${(Wobj/G*1000).toFixed(0)}g`, px(xc), py(ay+2*s+0.02));
   }
-
-  // Ground
-  const gy=-0.22;
-  ctx.beginPath(); ctx.strokeStyle='#ccc'; ctx.lineWidth=1.5;
-  ctx.setLineDash([6,4]); ctx.moveTo(0,py(gy)); ctx.lineTo(W,py(gy)); ctx.stroke();
-  ctx.setLineDash([]);
-
-  // Base width indicator (±b)
-  const bPx = pdx(sim.b);
-  ctx.strokeStyle='#bbb'; ctx.lineWidth=1;
-  ctx.beginPath(); ctx.setLineDash([3,3]);
-  ctx.moveTo(px(-sim.b),py(gy)+8); ctx.lineTo(px(-sim.b),py(gy)+20); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(px(sim.b),py(gy)+8); ctx.lineTo(px(sim.b),py(gy)+20); ctx.stroke();
-  ctx.setLineDash([]);
-
-  // Normal forces (N_L, N_R) — green arrows
-  const [NL,NR]=normalForces(sim.aR,sim.WR,sim.aL);
-  const refGf=(W0+sim.WL+sim.WR)/G*1000/2, scN=0.085/refGf;
-  for (const [x,N,lbl] of [[-sim.b,NL,`N_L: ${NL.toFixed(0)}gf`],[sim.b,NR,`N_R: ${NR.toFixed(0)}gf`]]) {
-    const h=N*scN;
-    arrow(ctx,px(x),py(gy),px(x),py(gy+h),'#2a9d8f',2.5);
-    ctx.fillStyle='#2a9d8f'; ctx.font=`${Math.round(pdx(0.027))}px sans-serif`; ctx.textAlign='center';
-    ctx.fillText(lbl,px(x),py(gy+h+0.028));
-  }
-
-  // Internal horizontal forces (F1, F2) — orange arrows
+  // Internal horizontal forces (F1, F2) — rotate with balance
   const [F1,F2]=horizForces(sim.aL,sim.WL,sim.aR,sim.WR);
   const Fmx=Math.max(Math.abs(F1),Math.abs(F2),0.05), scF=0.055/Fmx;
   const midR=[kp.ru[0],(kp.ru[1]+kp.rl[1])/2];
   const midL=[kp.lu[0],(kp.lu[1]+kp.ll[1])/2];
-
   if (Math.abs(F2)>0.05) {
     arrow(ctx,px(midR[0]),py(midR[1]),px(midR[0]-F2*scF),py(midR[1]),'#f4a261',2.2);
     ctx.fillStyle='#f4a261'; ctx.textAlign='right';
@@ -367,6 +359,34 @@ function drawBalance() {
     ctx.fillStyle='#f4a261'; ctx.textAlign='left';
     ctx.font=`${Math.round(pdx(0.025))}px sans-serif`;
     ctx.fillText(`F₁=${F1.toFixed(2)}N`,px(midL[0]+F1*scF+0.007),py(midL[1])-4);
+  }
+
+  // Restore transform and draw tipping overlay
+  if (tip.active) {
+    ctx.restore();
+    ctx.fillStyle='rgba(230,57,70,0.90)'; ctx.fillRect(W/2-155,H/2-28,310,54);
+    ctx.fillStyle='white'; ctx.textAlign='center';
+    ctx.font=`bold ${Math.round(pdx(0.036))}px sans-serif`;
+    ctx.fillText('저울 넘어짐!  Δa > Δa_max', W/2, H/2+4);
+    ctx.font=`${Math.round(pdx(0.026))}px sans-serif`;
+    ctx.fillStyle='rgba(255,255,255,0.85)';
+    ctx.fillText('슬라이더를 움직이면 리셋됩니다', W/2, H/2+22);
+    const badge=`θ = ${(th*180/Math.PI).toFixed(1)}°`;
+    ctx.font=`bold ${Math.round(pdx(0.038))}px sans-serif`; ctx.textAlign='right';
+    const bw=ctx.measureText(badge).width+16;
+    ctx.fillStyle='rgba(255,255,255,0.9)'; ctx.fillRect(W-bw-6,8,bw,28);
+    ctx.fillStyle='#2b2d42'; ctx.fillText(badge,W-10,28);
+    return;
+  }
+
+  // Normal forces (N_L, N_R) — green arrows (only when upright)
+  const [NL,NR]=normalForces(sim.aR,sim.WR,sim.aL);
+  const refGf=(W0+sim.WL+sim.WR)/G*1000/2, scN=0.085/refGf;
+  for (const [x,N,lbl] of [[-sim.b,NL,`N_L: ${NL.toFixed(0)}gf`],[sim.b,NR,`N_R: ${NR.toFixed(0)}gf`]]) {
+    const h=N*scN;
+    arrow(ctx,px(x),py(gy),px(x),py(gy+h),'#2a9d8f',2.5);
+    ctx.fillStyle='#2a9d8f'; ctx.font=`${Math.round(pdx(0.027))}px sans-serif`; ctx.textAlign='center';
+    ctx.fillText(lbl,px(x),py(gy+h+0.028));
   }
 
   // Angle badge
@@ -742,17 +762,42 @@ const DT=1/60; let lastTS=null, acc=0;
 // Hard-stop restitution coefficient
 // 0 = perfectly inelastic (clay), 0.45 = rubber bumper (realistic for balance stop)
 const RESTITUTION = 0.45;
+
+// ── Tipping state (Eq.3: Δa > Δa_max → NL < 0 → balance topples) ──────────
+const tip = { active: false, phi: 0, dphi: 0, dir: 1, pivotX: 0 };
+
+function startTip(dir) {
+  tip.active = true;  tip.phi = 0.008;  tip.dphi = 0;
+  tip.dir = dir;  tip.pivotX = dir > 0 ? sim.b : -sim.b;
+}
+
+function stepTip(dt) {
+  if (tip.phi >= Math.PI / 2) return;
+  const M = (W0 + sim.WL + sim.WR) / G;
+  const h = 0.11, I = M * h * h * 1.6;           // pendulum about base contact
+  tip.dphi += (M * G * h / I) * Math.sin(tip.phi + 0.05) * dt;
+  tip.phi  += tip.dphi * dt;
+}
+
 function loop(ts) {
   if (lastTS!==null) {
     const el=Math.min((ts-lastTS)/1000,0.05); acc+=el;
     while (acc>=DT) {
-      let [nt,nd]=rk4(sim.theta,sim.dtheta,DT,sim.WL,sim.WR,sim.c,sim.tau_c);
-      // Hard mechanical stop (absorbs most energy, tiny bounce)
-      if (nt >  THETA_STOP) { nt= THETA_STOP; nd = nd > 0 ? -RESTITUTION*Math.abs(nd) : nd; }
-      if (nt < -THETA_STOP) { nt=-THETA_STOP; nd = nd < 0 ?  RESTITUTION*Math.abs(nd) : nd; }
-      sim.theta=nt; sim.dtheta=nd; sim.t+=DT;
-      sim.tHist.push(sim.t); sim.thHist.push(sim.theta);
-      if (sim.tHist.length>sim.maxHist){sim.tHist.shift();sim.thHist.shift();}
+      if (tip.active) {
+        stepTip(DT);
+      } else {
+        const nf=normalForces(sim.aR,sim.WR,sim.aL,sim.WL,sim.b);
+        if      (nf[0]<0) startTip( 1);   // NL<0 → tips right
+        else if (nf[1]<0) startTip(-1);   // NR<0 → tips left
+        else {
+          let [nt,nd]=rk4(sim.theta,sim.dtheta,DT,sim.WL,sim.WR,sim.c,sim.tau_c);
+          if (nt >  THETA_STOP) { nt= THETA_STOP; nd = nd > 0 ? -RESTITUTION*Math.abs(nd) : nd; }
+          if (nt < -THETA_STOP) { nt=-THETA_STOP; nd = nd < 0 ?  RESTITUTION*Math.abs(nd) : nd; }
+          sim.theta=nt; sim.dtheta=nd; sim.t+=DT;
+          sim.tHist.push(sim.t); sim.thHist.push(sim.theta);
+          if (sim.tHist.length>sim.maxHist){sim.tHist.shift();sim.thHist.shift();}
+        }
+      }
       acc-=DT;
     }
   }
@@ -762,14 +807,14 @@ function loop(ts) {
 }
 
 // ── Sliders ───────────────────────────────────────────────────────────────────
-function resetDyn(){sim.theta=0.03;sim.dtheta=0;sim.t=0;sim.tHist=[];sim.thHist=[];}
+function resetDyn(){sim.theta=0.03;sim.dtheta=0;sim.t=0;sim.tHist=[];sim.thHist=[];tip.active=false;tip.phi=0;tip.dphi=0;}
 
 function bindSl(id,valId,fmt,set,resetDynamics=true) {
   document.getElementById(id).addEventListener('input', e=>{
     const v=parseFloat(e.target.value);
     document.getElementById(valId).textContent=fmt(v);
     set(v);
-    if(resetDynamics) resetDyn();
+    if(tip.active || resetDynamics) resetDyn();
     drawNF(); drawHF(); drawAllFBDs(); updateStability();
   });
 }
