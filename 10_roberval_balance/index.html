@@ -121,7 +121,7 @@ input[type=range] { width: 100%; accent-color: #4a90d9; cursor: pointer; }
         </div>
         <div class="sl-row">
           <div class="sl-header"><span class="sl-label">W_R — 오른쪽 질량</span><span class="sl-val" id="v-wr">130 g</span></div>
-          <input type="range" id="sl-wr" min="10" max="400" value="130" step="5">
+          <input type="range" id="sl-wr" min="10" max="400" value="100" step="5">
         </div>
         <div class="sl-row">
           <div class="sl-header"><span class="sl-label">a_L — 왼쪽 위치</span><span class="sl-val" id="v-al">0.0 cm</span></div>
@@ -192,7 +192,7 @@ const THETA_STOP = 38 * Math.PI / 180;
 // ── Simulation state (mutable parameters) ───────────────────────────────────
 const sim = {
   theta: 0.03, dtheta: 0.0, t: 0,
-  WL: G,    WR: 1.3*G,
+  WL: 0.1*G, WR: 0.1*G,
   aL: 0.0,  aR: 0.0,
   b: 0.10,          // half base-width
   d: 0.06,          // beam separation
