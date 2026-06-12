@@ -146,11 +146,15 @@ input[type=range] { width: 100%; accent-color: #4a90d9; cursor: pointer; }
           <input type="range" id="sl-d" min="1" max="15" value="6" step="0.5">
         </div>
         <div class="sl-row">
-          <div class="sl-header"><span class="sl-label">감쇠 계수</span><span class="sl-val" id="v-damp">50</span></div>
-          <input type="range" id="sl-damp" min="1" max="200" value="50" step="1">
+          <div class="sl-header"><span class="sl-label">피봇 마찰력 τ_c</span><span class="sl-val" id="v-tc">5.0 mN·m</span></div>
+          <input type="range" id="sl-tc" min="0" max="30" value="5" step="0.5">
+        </div>
+        <div class="sl-row">
+          <div class="sl-header"><span class="sl-label">점성 감쇠 c <small style="color:#bbb">(공기·베어링)</small></span><span class="sl-val" id="v-damp">2</span></div>
+          <input type="range" id="sl-damp" min="0" max="50" value="2" step="1">
         </div>
         <div class="sl-row" style="justify-content:flex-end; padding-top:6px;">
-          <button id="btn-kick" style="padding:5px 14px; border:none; border-radius:6px; background:#4a90d9; color:white; font-size:0.82rem; cursor:pointer;">▶ 초기 섭동 (kick)</button>
+          <button id="btn-kick" style="padding:5px 14px; border:none; border-radius:6px; background:#4a90d9; color:white; font-size:0.82rem; cursor:pointer;">▶ kick (초기 충격)</button>
         </div>
       </div>
     </div>
@@ -166,7 +170,8 @@ input[type=range] { width: 100%; accent-color: #4a90d9; cursor: pointer; }
       <strong>핵심 역설:</strong>
       a_L, a_R를 바꿔도 W_L = W_R이면 <strong>θ는 변하지 않습니다</strong>.
       하지만 자유물체도를 보면 <strong>내부 수평력 F₁, F₂</strong>와 <strong>수직항력 N_L, N_R</strong>이 달라집니다.
-      &nbsp;|&nbsp; <strong>b (받침 반폭)</strong>: 클수록 안정. 작을수록 쉽게 넘어짐.
+      &nbsp;|&nbsp; <strong>τ_c (피봇 마찰력)</strong>: 쿨롱 마찰 — 실제 저울은 2~8 mN·m, 수 번 만에 완전 정지.
+      τ_c=0으로 설정하면 이전처럼 무한 진동(순수 점성 감쇠)을 볼 수 있습니다.
       &nbsp;|&nbsp; <strong>D (빔 간격)</strong>: F₁, F₂ 크기만 바뀌고 θ, N_L/N_R에는 영향 없음.
     </div>
   </div>
@@ -191,7 +196,8 @@ const sim = {
   aL: 0.0,  aR: 0.0,
   b: 0.10,          // half base-width
   d: 0.06,          // beam separation
-  c: 0.05,          // damping
+  c: 0.002,         // viscous damping (small — Coulomb dominates in real balances)
+  tau_c: 0.005,     // Coulomb friction torque, N·m  (≈ 5 mN·m, realistic for kitchen scale)
   tHist: [], thHist: [], maxHist: 500,
 };
 
@@ -199,18 +205,22 @@ const sim = {
 function Ieff(WL, WR) {
   return ((1/3)*M_BEAM + 2*M_ARM + (WL+WR)/G) * L_beam**2;
 }
-function odeRHS(th, dth, WL, WR, c) {
+function odeRHS(th, dth, WL, WR, c, tau_c) {
   // Object position (aL, aR) does NOT appear — only weight difference drives tilt
-  let tau = L_beam * Math.cos(th) * (WR - WL) - c * dth;
-  if (th >  THETA_STOP) tau -= 600*(th - THETA_STOP);
-  if (th < -THETA_STOP) tau -= 600*(th + THETA_STOP);
+  let tau = L_beam * Math.cos(th) * (WR - WL);
+  // Viscous damping (air resistance, bearing viscosity)
+  tau -= c * dth;
+  // Coulomb (dry) friction at pivots — tanh gives smooth static→kinetic transition
+  // eps ≈ 0.003 rad/s: below this speed, static friction holds
+  const eps = 0.003;
+  tau -= tau_c * Math.tanh(dth / eps);
   return [dth, tau / Ieff(WL, WR)];
 }
-function rk4(th, dth, dt, WL, WR, c) {
-  const [k1v,k1a]=odeRHS(th,            dth,            WL, WR, c);
-  const [k2v,k2a]=odeRHS(th+k1v*dt/2,   dth+k1a*dt/2,   WL, WR, c);
-  const [k3v,k3a]=odeRHS(th+k2v*dt/2,   dth+k2a*dt/2,   WL, WR, c);
-  const [k4v,k4a]=odeRHS(th+k3v*dt,     dth+k3a*dt,     WL, WR, c);
+function rk4(th, dth, dt, WL, WR, c, tau_c) {
+  const [k1v,k1a]=odeRHS(th,            dth,            WL, WR, c, tau_c);
+  const [k2v,k2a]=odeRHS(th+k1v*dt/2,   dth+k1a*dt/2,   WL, WR, c, tau_c);
+  const [k3v,k3a]=odeRHS(th+k2v*dt/2,   dth+k2a*dt/2,   WL, WR, c, tau_c);
+  const [k4v,k4a]=odeRHS(th+k3v*dt,     dth+k3a*dt,     WL, WR, c, tau_c);
   return [th+(k1v+2*k2v+2*k3v+k4v)*dt/6, dth+(k1a+2*k2a+2*k3a+k4a)*dt/6];
 }
 
@@ -729,11 +739,16 @@ function updateStability() {
 
 // ── Animation loop ────────────────────────────────────────────────────────────
 const DT=1/60; let lastTS=null, acc=0;
+// Hard-stop restitution coefficient (0 = perfectly inelastic, 0.15 = slight bounce)
+const RESTITUTION = 0.12;
 function loop(ts) {
   if (lastTS!==null) {
     const el=Math.min((ts-lastTS)/1000,0.05); acc+=el;
     while (acc>=DT) {
-      const [nt,nd]=rk4(sim.theta,sim.dtheta,DT,sim.WL,sim.WR,sim.c);
+      let [nt,nd]=rk4(sim.theta,sim.dtheta,DT,sim.WL,sim.WR,sim.c,sim.tau_c);
+      // Hard mechanical stop (absorbs most energy, tiny bounce)
+      if (nt >  THETA_STOP) { nt= THETA_STOP; nd = nd > 0 ? -RESTITUTION*Math.abs(nd) : nd; }
+      if (nt < -THETA_STOP) { nt=-THETA_STOP; nd = nd < 0 ?  RESTITUTION*Math.abs(nd) : nd; }
       sim.theta=nt; sim.dtheta=nd; sim.t+=DT;
       sim.tHist.push(sim.t); sim.thHist.push(sim.theta);
       if (sim.tHist.length>sim.maxHist){sim.tHist.shift();sim.thHist.shift();}
@@ -764,10 +779,12 @@ bindSl('sl-al','v-al', v=>`${v.toFixed(1)} cm`, v=>{sim.aL=v/100;},false);
 bindSl('sl-ar','v-ar', v=>`${v.toFixed(1)} cm`, v=>{sim.aR=v/100;},false);
 bindSl('sl-b', 'v-b',  v=>`${v.toFixed(1)} cm`, v=>{sim.b=v/100;},false);
 bindSl('sl-d', 'v-d',  v=>`${v.toFixed(1)} cm`, v=>{sim.d=v/100;},false);
-bindSl('sl-damp','v-damp',v=>`${v}`,      v=>{sim.c=v/1000;},false);
+bindSl('sl-tc',  'v-tc',  v=>`${v.toFixed(1)} mN·m`, v=>{sim.tau_c=v/1000;},false);
+bindSl('sl-damp','v-damp',v=>`${v}`,                 v=>{sim.c=v/1000;},false);
 
 document.getElementById('btn-kick').addEventListener('click',()=>{
-  sim.theta+=0.08; sim.dtheta=0; resetDyn(); sim.theta=0.08;
+  // Give an angular velocity kick instead of a position offset
+  sim.dtheta += 0.6;
 });
 
 // ── Init ──────────────────────────────────────────────────────────────────────
